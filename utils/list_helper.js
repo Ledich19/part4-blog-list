@@ -22,8 +22,8 @@ const favouriteBlog = (blogs) => {
   return blog
 }
 
-const mostBlogs = (blog) => {
-  const countBlogs = _.countBy(blog, 'author')
+const mostBlogs = (blogs) => {
+  const countBlogs = _.countBy(blogs, 'author')
   const transform = _.map(countBlogs, (elem, key) => ({
     author: key,
     blogs: elem,
