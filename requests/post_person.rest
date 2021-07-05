@@ -7,35 +7,13 @@ Content-Type: application/json
   "url": "https://gsuih/fbjehdj/hefgwhjg",
   "likes": 7
 }
+
 ###
-POST http://localhost:3001/api/person
+POST http://localhost:3003/api/users
 Content-Type: application/json
 
 {
-  "name": "ae",
-  "number": "040-123456"
-}
-###
-POST http://localhost:3001/api/person
-Content-Type: application/json
-
-{
-  "name": "aegraeerwrga"
-}
-
-###
-POST http://localhost:3001/api/person
-Content-Type: application/json
-
-{
-  "number": "040-123456"
-}
-
-###
-POST https://infinite-brook-95870.herokuapp.com/api/person
-Content-Type: application/json
-
-{
-  "name": "aegraeerwrga",
-  "number": "040-123456"
+  "name": "Aleksandr",
+  "username": "Aleksandr",
+  "password": "55555"
 }
