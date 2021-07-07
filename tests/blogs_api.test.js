@@ -1,87 +1,65 @@
 const mongoose = require('mongoose')
 const supertest = require('supertest')
+const bcrypt = require('bcrypt')
 const app = require('../app')
 const Blog = require('../models/blog')
+const User = require('../models/user')
+const helper = require('./test_helper')
 
 const api = supertest(app)
-
-const blogsInitial = [{
-  _id: '5a422a851b54a676234d17f7',
-  title: 'React patterns',
-  author: 'Michael Chan',
-  url: 'https://reactpatterns.com/',
-  likes: 7,
-  __v: 0,
-},
-{
-  _id: '5a422aa71b54a676234d17f8',
-  title: 'Go To Statement Considered Harmful',
-  author: 'Edsger W. Dijkstra',
-  url: 'http://www.u.arizona.edu/~rubinson/copyright_violations/Go_To_Considered_Harmful.html',
-  likes: 5,
-  __v: 0,
-},
-{
-  _id: '5a422b3a1b54a676234d17f9',
-  title: 'Canonical string reduction',
-  author: 'Edsger W. Dijkstra',
-  url: 'http://www.cs.utexas.edu/~EWD/transcriptions/EWD08xx/EWD808.html',
-  likes: 12,
-  __v: 0,
-},
-{
-  _id: '5a422b891b54a676234d17fa',
-  title: 'First class tests',
-  author: 'Robert C. Martin',
-  url: 'http://blog.cleancoder.com/uncle-bob/2017/05/05/TestDefinitions.htmll',
-  likes: 10,
-  __v: 0,
-},
-{
-  _id: '5a422ba71b54a676234d17fb',
-  title: 'TDD harms architecture',
-  author: 'Robert C. Martin',
-  url: 'http://blog.cleancoder.com/uncle-bob/2017/03/03/TDD-Harms-Architecture.html',
-  likes: 0,
-  __v: 0,
-},
-{
-  _id: '5a422bc61b54a676234d17fc',
-  title: 'Type wars',
-  author: 'Robert C. Martin',
-  url: 'http://blog.cleancoder.com/uncle-bob/2016/05/01/TypeWars.html',
-  likes: 2,
-  __v: 0,
-},
-]
-
-beforeEach(async () => {
-  await Blog.deleteMany({})
-  const blogsObjects = blogsInitial.map((blog) => {
-    delete blog._id
-    delete blog.__v
-    return new Blog(blog)
+beforeAll(async () => {
+  await User.deleteMany({})
+  const users = helper.userInitial
+  const user = users[0]
+  const saltRounds = 10
+  const passwordHash = await bcrypt.hash(user.password, saltRounds)
+  const newUser = new User({
+    ...user,
+    passwordHash,
   })
-  const promiseBlogs = blogsObjects.map((blog) => blog.save())
-  await Promise.all(promiseBlogs)
+  await newUser.save()
+})
+beforeEach(async () => {
+  const user = await User.findOne({
+    name: 'Aleksandr',
+    username: 'Aleksandr',
+  })
+
+  await Blog.deleteMany({})
+  const blogsObjects = helper.blogsInitial.map((blog) => {
+    const newBlog = {
+      ...blog,
+      user: user._id
+    }
+    return new Blog(newBlog)
+  })
+  await Blog.insertMany(blogsObjects)
+
+  user.blogs = helper.blogsInitial.map((blog) => blog._id)
+  await user.save()
 })
 
 test('blogs are returned as json ', async () => {
-  await api.get('/api/blogs')
+  await api
+    .get('/api/blogs')
     .expect(200)
     .expect('Content-Type', /application\/json/)
 })
 
 test('all blogs are returned', async () => {
-  const response = await api.get('/api/blogs')
-  expect(response.body).toHaveLength(blogsInitial.length)
+  const response = await api
+    .get('/api/blogs')
+  expect(response.body)
+    .toHaveLength(helper.blogsInitial.length)
 })
 
 test('unique identifiers are named id', async () => {
-  const response = await api.get('/api/blogs')
-  response.body.forEach((element) => {
-    expect(element.id).toBeDefined()
-  })
+  const response = await api
+    .get('/api/blogs')
+  response.body
+    .forEach((element) => {
+      expect(element.id).toBeDefined()
+    })
 })
 
 test('blog can be added', async () => {
@@ -91,14 +69,16 @@ test('blog can be added', async () => {
     url: 'https://github.com/Ledich19',
     likes: 1000000,
   }
-  await api.post('/api/blogs')
+  const token = await helper.getToken()
+  await api
+    .post('/api/blogs')
+    .set('Authorization', token)
     .send(newBlog)
     .expect(200)
     .expect('Content-Type', /application\/json/)
-
-  const response = await api.get('/api/blogs')
-  expect(response.body).toHaveLength(blogsInitial.length + 1)
-  const blogs = response.body.map((blog) => blog.title)
+  const blogsInDb = await helper.blogsInDb()
+  expect(blogsInDb).toHaveLength(helper.blogsInitial.length + 1)
+  const blogs = blogsInDb.map((blog) => blog.title)
   expect(blogs).toContain('Test blog')
 })
 
@@ -108,13 +88,18 @@ test('if likes is missing, likes will be 0', async () => {
     author: 'Aleksandr',
     url: 'https://github.com/Ledich19',
   }
-  const postBlog = await api.post('/api/blogs').send(newBlog)
-  console.log(postBlog.body)
+  const token = await helper.getToken()
+  const postBlog = await api
+    .post('/api/blogs')
+    .set('Authorization', token)
+    .send(newBlog)
   expect(postBlog.body.likes).toBeDefined()
   expect(postBlog.body.likes).toBe(0)
 })
 
-test('if have not title and url returned 400', async () => {
+test('if have not title or url returned 400', async () => {
+  const token = await helper.getToken()
+
   let newBlog = {
     title: '',
     author: 'Aleksandr',
@@ -122,6 +107,7 @@ test('if have not title and url returned 400', async () => {
   }
   await api
     .post('/api/blogs')
+    .set('Authorization', token)
     .send(newBlog)
     .expect(400)
 
@@ -132,42 +118,55 @@ test('if have not title and url returned 400', async () => {
   }
   await api
     .post('/api/blogs')
+    .set('Authorization', token)
     .send(newBlog)
     .expect(400)
 })
 
-describe('delete blog', () => {
-  test('succeeds with status code 204 if id is valid', async () => {
-    const {
-      body,
-    } = await api.get('/api/blogs')
-    const deletBlog = body[0]
-    await api.delete(`/api/blogs/${deletBlog.id}`).expect(204)
-    const blogsEnd = await api.get('/api/blogs')
-    expect(blogsEnd.body.length).toBe(body.length - 1)
-    const blogsUrl = blogsEnd.body.map((n) => n.url)
-    expect(blogsUrl).not.toContain(deletBlog.url)
-  })
+test('if blog heve not token status 401', async () => {
+  const newBlog = {
+    title: '',
+    author: 'Aleksandr',
+    url: 'https://github.com/Ledich19',
+  }
+  await api
+    .post('/api/blogs')
+    .send(newBlog)
+    .expect(401)
 })
 
-describe('update blog', () => {
-  test('blog did updated', async () => {
-    const {
-      body,
-    } = await api.get('/api/blogs')
-    const updateBlog = body[0]
-    console.log(body.likes, typeof (body.likes))
-    const newLikes = {
-      likes: updateBlog.likes + 1,
-    }
-    await api
-      .put(`/api/blogs/${updateBlog.id}`)
-      .send(newLikes)
-      .expect(200)
-      .expect('Content-Type', /application\/json/)
-    const blogsEnd = await api.get('/api/blogs')
-    expect(blogsEnd.body[0].likes).toBe(updateBlog.likes + 1)
-  })
+test('delete blog succeeds with status code 204 if id is valid', async () => {
+  const token = await helper.getToken()
+  const blogs = await Blog.find({})
+  const deletBlog = blogs[0]
+  await api
+    .delete(`/api/blogs/${deletBlog.id}`)
+    .set('Authorization', token)
+    .expect(204)
+
+  const blogsInDb = await helper.blogsInDb()
+  expect(blogsInDb.length).toBe(blogs.length - 1)
+
+  const blogsUrl = blogsInDb.map((n) => n.url)
+  expect(blogsUrl).not.toContain(deletBlog.url)
+})
+
+test('blog did updated', async () => {
+  const token = await helper.getToken()
+  const blogs = await Blog.find({})
+  const updateBlog = blogs[0]
+  const newLikes = {
+    likes: updateBlog.likes + 1,
+  }
+  await api
+    .put(`/api/blogs/${updateBlog.id}`)
+    .set('Authorization', token)
+    .send(newLikes)
+    .expect(200)
+    .expect('Content-Type', /application\/json/)
+
+  const blogsInDb = await helper.blogsInDb()
+  expect(blogsInDb[0].likes).toBe(updateBlog.likes + 1)
 })
 
 afterAll(() => {
